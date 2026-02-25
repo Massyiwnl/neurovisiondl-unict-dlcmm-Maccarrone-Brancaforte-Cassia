@@ -1,125 +1,130 @@
 import torch
 from tqdm.auto import tqdm
 
-def train_step(model: torch.nn.Module, 
-               dataloader: torch.utils.data.DataLoader, 
-               loss_fn: torch.nn.Module, 
-               optimizer: torch.optim.Optimizer,
-               device: torch.device):
-    """Esegue un'epoca di addestramento."""
-    # Mette il modello in modalità training (attiva Dropout, BatchNorm, ecc.)
+class EarlyStopping:
+    """
+    Ferma il training se la validation loss non migliora dopo un certo numero di epoche (patience).
+    """
+    def __init__(self, patience=5, min_delta=0.0):
+        self.patience = patience
+        self.min_delta = min_delta
+        self.counter = 0
+        self.best_loss = float('inf')
+        self.early_stop = False
+
+    def __call__(self, val_loss):
+        if val_loss < self.best_loss - self.min_delta:
+            self.best_loss = val_loss
+            self.counter = 0
+        else:
+            self.counter += 1
+            print(f"⚠️ Early Stopping counter: {self.counter} su {self.patience}")
+            if self.counter >= self.patience:
+                self.early_stop = True
+
+def train_step(model: torch.nn.Module, dataloader: torch.utils.data.DataLoader, 
+               loss_fn: torch.nn.Module, optimizer: torch.optim.Optimizer, 
+               device: torch.device, is_binary: bool = False):
+    
     model.train()
-    
     train_loss, train_acc = 0, 0
-    
-    # Loop sui batch
-    for batch, (X, y) in enumerate(dataloader):
-        # Sposta i dati sul dispositivo (GPU/CPU)
+
+    for batch, (X, y) in enumerate(tqdm(dataloader, desc="Training", leave=False)):
         X, y = X.to(device), y.to(device)
+        
+        # Se usiamo BCEWithLogitsLoss per la binaria, le labels devono essere float
+        if is_binary:
+            y = y.float().unsqueeze(1)
 
-        # 1. Forward pass (Calcolo delle predizioni)
-        # Se usiamo la classificazione binaria con BCEWithLogitsLoss, le label devono essere float
-        if loss_fn.__class__.__name__ == 'BCEWithLogitsLoss':
-            y = y.unsqueeze(1).float()
-            
         y_pred = model(X)
-
-        # 2. Calcolo della Loss
         loss = loss_fn(y_pred, y)
-        train_loss += loss.item() 
+        train_loss += loss.item()
 
-        # 3. Optimizer zero grad (Pulisce i gradienti accumulati)
         optimizer.zero_grad()
-
-        # 4. Loss backward (Backpropagation)
         loss.backward()
-
-        # 5. Optimizer step (Aggiornamento dei pesi)
         optimizer.step()
 
-        # Calcolo dell'accuratezza (diverso tra binario e multiclasse)
-        if loss_fn.__class__.__name__ == 'BCEWithLogitsLoss':
-            y_pred_class = torch.round(torch.sigmoid(y_pred))
-            train_acc += (y_pred_class == y).sum().item() / len(y_pred)
+        # Calcolo Accuracy
+        if is_binary:
+            predicted_classes = (torch.sigmoid(y_pred) > 0.5).float()
         else:
-            y_pred_class = torch.argmax(torch.softmax(y_pred, dim=1), dim=1)
-            train_acc += (y_pred_class == y).sum().item() / len(y_pred)
+            predicted_classes = torch.argmax(torch.softmax(y_pred, dim=1), dim=1)
+            
+        train_acc += (predicted_classes == y).sum().item() / len(y_pred)
 
-    # Calcola le medie per l'intera epoca
     train_loss = train_loss / len(dataloader)
     train_acc = train_acc / len(dataloader)
     return train_loss, train_acc
 
-def test_step(model: torch.nn.Module, 
-              dataloader: torch.utils.data.DataLoader, 
-              loss_fn: torch.nn.Module,
-              device: torch.device):
-    """Valuta il modello sui dati di Validation/Test."""
-    # Mette il modello in modalità valutazione (disattiva Dropout, BatchNorm, ecc.)
-    model.eval() 
+def val_step(model: torch.nn.Module, dataloader: torch.utils.data.DataLoader, 
+             loss_fn: torch.nn.Module, device: torch.device, is_binary: bool = False):
     
-    test_loss, test_acc = 0, 0
-    
-    # Disattiva il calcolo dei gradienti per risparmiare memoria e tempo
-    with torch.inference_mode():
-        for batch, (X, y) in enumerate(dataloader):
+    model.eval()
+    val_loss, val_acc = 0, 0
+
+    with torch.no_grad():
+        for X, y in tqdm(dataloader, desc="Validation", leave=False):
             X, y = X.to(device), y.to(device)
-
-            if loss_fn.__class__.__name__ == 'BCEWithLogitsLoss':
-                y = y.unsqueeze(1).float()
-
-            # 1. Forward pass
-            y_pred = model(X)
-
-            # 2. Calcolo della loss e dell'accuratezza
-            loss = loss_fn(y_pred, y)
-            test_loss += loss.item()
             
-            if loss_fn.__class__.__name__ == 'BCEWithLogitsLoss':
-                y_pred_class = torch.round(torch.sigmoid(y_pred))
-                test_acc += (y_pred_class == y).sum().item() / len(y_pred)
-            else:
-                y_pred_class = torch.argmax(torch.softmax(y_pred, dim=1), dim=1)
-                test_acc += (y_pred_class == y).sum().item() / len(y_pred)
-                
-    # Calcola le medie
-    test_loss = test_loss / len(dataloader)
-    test_acc = test_acc / len(dataloader)
-    return test_loss, test_acc
+            if is_binary:
+                y = y.float().unsqueeze(1)
 
-def train(model: torch.nn.Module, 
-          train_dataloader: torch.utils.data.DataLoader, 
-          test_dataloader: torch.utils.data.DataLoader, 
-          optimizer: torch.optim.Optimizer,
-          loss_fn: torch.nn.Module,
-          epochs: int,
-          device: torch.device):
-    """Unisce train_step e test_step ed esegue il loop per N epoche."""
+            y_pred = model(X)
+            loss = loss_fn(y_pred, y)
+            val_loss += loss.item()
+
+            if is_binary:
+                predicted_classes = (torch.sigmoid(y_pred) > 0.5).float()
+            else:
+                predicted_classes = torch.argmax(torch.softmax(y_pred, dim=1), dim=1)
+                
+            val_acc += (predicted_classes == y).sum().item() / len(y_pred)
+
+    val_loss = val_loss / len(dataloader)
+    val_acc = val_acc / len(dataloader)
+    return val_loss, val_acc
+
+def train_engine(model: torch.nn.Module, train_dataloader: torch.utils.data.DataLoader, 
+                 val_dataloader: torch.utils.data.DataLoader, optimizer: torch.optim.Optimizer, 
+                 loss_fn: torch.nn.Module, epochs: int, device: torch.device, 
+                 is_binary: bool = False, save_path: str = "best_model.pth", patience: int = 5):
     
-    # Dizionario per salvare i risultati (utile poi per i plot)
-    results = {"train_loss": [], "train_acc": [], "test_loss": [], "test_acc": []}
+    results = {"train_loss": [], "train_acc": [], "val_loss": [], "val_acc": []}
     
-    for epoch in tqdm(range(epochs)):
-        train_loss, train_acc = train_step(model=model,
-                                           dataloader=train_dataloader,
-                                           loss_fn=loss_fn,
-                                           optimizer=optimizer,
-                                           device=device)
+    early_stopping = EarlyStopping(patience=patience)
+    
+    # Inizializziamo il Learning Rate Scheduler
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=2, verbose=True)
+
+    best_val_loss = float('inf')
+
+    for epoch in range(epochs):
+        print(f"\nEpoch: {epoch+1}/{epochs} | LR: {optimizer.param_groups[0]['lr']}")
         
-        test_loss, test_acc = test_step(model=model,
-                                        dataloader=test_dataloader,
-                                        loss_fn=loss_fn,
-                                        device=device)
+        train_loss, train_acc = train_step(model, train_dataloader, loss_fn, optimizer, device, is_binary)
+        val_loss, val_acc = val_step(model, val_dataloader, loss_fn, device, is_binary)
         
-        # Stampa i risultati dell'epoca
-        print(f"Epoch: {epoch+1} | "
-              f"train_loss: {train_loss:.4f} | train_acc: {train_acc:.4f} | "
-              f"val_loss: {test_loss:.4f} | val_acc: {test_acc:.4f}")
+        print(f"Train Loss: {train_loss:.4f} | Train Acc: {train_acc:.4f}")
+        print(f"Val Loss: {val_loss:.4f} | Val Acc: {val_acc:.4f}")
         
-        # Salvataggio dei risultati nel dizionario
         results["train_loss"].append(train_loss)
         results["train_acc"].append(train_acc)
-        results["test_loss"].append(test_loss)
-        results["test_acc"].append(test_acc)
+        results["val_loss"].append(val_loss)
+        results["val_acc"].append(val_acc)
+        
+        # 1. Learning Rate Scheduler step
+        scheduler.step(val_loss)
+        
+        # 2. Model Checkpointing: Salva i pesi solo se la Validation Loss migliora
+        if val_loss < best_val_loss:
+            print(f"⭐ Val Loss migliorata da {best_val_loss:.4f} a {val_loss:.4f}. Salvataggio modello...")
+            best_val_loss = val_loss
+            torch.save(model.state_dict(), save_path)
+            
+        # 3. Early Stopping
+        early_stopping(val_loss)
+        if early_stopping.early_stop:
+            print(f"🛑 Early stopping attivato all'epoca {epoch+1}. Il modello ha smesso di imparare.")
+            break
 
     return results
