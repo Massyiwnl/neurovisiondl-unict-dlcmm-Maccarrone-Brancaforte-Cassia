@@ -94,7 +94,7 @@ def train_engine(model: torch.nn.Module, train_dataloader: torch.utils.data.Data
     early_stopping = EarlyStopping(patience=patience)
     
     # Inizializziamo il Learning Rate Scheduler
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=2, verbose=True)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=2)
 
     best_val_loss = float('inf')
 
