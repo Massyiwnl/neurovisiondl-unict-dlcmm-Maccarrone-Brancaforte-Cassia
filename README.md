@@ -1,4 +1,4 @@
-# 🧠 Classificazione Automatica del Grado di Demenza da Immagini MRI
+# 🧠 NEUROVISION DL - Classificazione Automatica del Grado di Demenza da Immagini MRI
 
 **Progetto Accademico di Deep Learning — Università degli Studi di Catania (UniCT)**
 
