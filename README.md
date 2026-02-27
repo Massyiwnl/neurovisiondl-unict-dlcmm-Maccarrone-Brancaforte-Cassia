@@ -133,7 +133,7 @@ Il ciclo di vita del progetto si conclude con la messa in produzione dei modelli
 **1. Clona la repository:**
 
 ```bash
-git clone https://github.com/tuo-username/alzheimer-mri-classification.git
+git clone https://github.com/MaccarroneAlessia/unict-dlcmm-Maccarrone-Brancaforte-Cassia
 cd alzheimer-mri-classification
 
 ```
@@ -155,7 +155,7 @@ Inserisci la cartella decompressa dei dati grezzi scaricati da Kaggle all'intern
 Per la **Fase 1 (Binaria):**
 
 ```bash
-python mlp_train_phase1.py
+python train_phase1_mlp.py
 python train_phase1.py
 
 ```
