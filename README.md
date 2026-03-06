@@ -11,6 +11,8 @@
 
 Lo scopo centrale di questo progetto non è la ricerca di architetture inedite, bensì la dimostrazione pratica e rigorosa della padronanza di un'intera pipeline di Deep Learning in produzione.
 
+> 📄 **Documentazione Estesa:** Per un'analisi approfondita, consulta la [Relazione Completa del Progetto (PDF)](RelazioneDeepLearningCMM - NeuroVisionDL.pdf).
+
 Partendo dal dataset **Augmented Alzheimer MRI Dataset** (immagini di risonanze magnetiche cerebrali), abbiamo ingegnerizzato un sistema in grado di classificare lo stato di avanzamento della demenza. Il progetto copre ogni fase: dall'Exploratory Data Analysis (EDA) alla Data Preparation (prevenendo il data leakage strutturale), passando per l'addestramento, il fine-tuning, un rigoroso benchmarking e, infine, il deploy tramite un'applicazione web interattiva.
 
 ---
